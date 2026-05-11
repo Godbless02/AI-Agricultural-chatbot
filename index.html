@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgriBotGH</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="mobile-menu-button" aria-label="Open sidebar">☰</button>
+        <span class="brand">
+          <span class="brand-icon">🌿</span>
+          <strong>AgriBotGH</strong>
+        </span>
+      </div>
+      <div class="topbar-center">
+        <span class="status-dot">●</span>
+        <span class="status-text">Online</span>
+      </div>
+      <div class="topbar-right">
+        <div class="mobile-language-toggle mobile-only"></div>
+        <button class="theme-toggle-button" type="button" aria-label="Switch theme">🌙</button>
+        <button class="suggestions-toggle-button" type="button" aria-label="Show suggestions" title="Quick suggestions">⋮</button>
+        <button class="clear-chat-button" type="button">Clear Chat</button>
+      </div>
+    </header>
+
+    <div class="main-layout">
+
+      <!-- LEFT SIDEBAR -->
+      <aside class="sidebar" id="leftSidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-icon">🌾</div>
+          <div class="sidebar-title">AgriBotGH</div>
+        </div>
+        <div class="language-toggle" id="languageToggle">
+          <button type="button" class="lang-button active" data-lang="en">English</button>
+          <button type="button" class="lang-button" data-lang="tw">Twi</button>
+        </div>
+        <div class="current-lang-indicator" id="currentLangIndicator">
+          Chatting in: <strong>English</strong>
+        </div>
+        <button type="button" class="new-chat-btn" id="newChatBtn">+ New Chat</button>
+        <div class="sidebar-history">
+          <div class="sidebar-history-title">Chats</div>
+          <div class="history-columns">
+            <div class="history-col">
+              <div class="history-col-label">English</div>
+              <div class="history-col-list" id="enHistoryList">
+                <p class="empty-state-small">None yet</p>
+              </div>
+            </div>
+            <div class="history-divider"></div>
+            <div class="history-col">
+              <div class="history-col-label">Twi</div>
+              <div class="history-col-list" id="twHistoryList">
+                <p class="empty-state-small">None yet</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- MAIN CHAT -->
+      <section class="chat-area">
+        <div class="chat-content">
+          <div class="messages" id="messages"></div>
+        </div>
+        <div class="chat-input-bar">
+          <div class="input-wrapper">
+            <input id="chatInput" type="text" placeholder="Type your question here..." autocomplete="off" maxlength="2000">
+            <span class="char-counter" id="charCounter">0/2000</span>
+          </div>
+          <button id="voiceButton" type="button" class="voice-button" aria-label="Record voice message">
+            <svg class="voice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 1c-1.657 0-3 1.343-3 3v7c0 1.657 1.343 3 3 3s3-1.343 3-3V4c0-1.657-1.343-3-3-3z"/>
+              <path d="M19 10c0 3.314-2.686 6-6 6s-6-2.686-6-6"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <canvas id="voiceCanvas" width="80" height="32" style="display:none;border-radius:6px;background:rgba(46,125,50,0.08);"></canvas>
+          <button id="sendButton" type="button" class="send-button">Send</button>
+        </div>
+      </section>
+
+      <!-- RIGHT SIDEBAR: Quick Suggestions -->
+      <aside class="suggestions-sidebar open" id="suggestionsSidebar">
+        <div class="suggestions-header">
+          <span class="suggestions-title">💡 Try asking</span>
+          <button class="suggestions-close" type="button" aria-label="Close suggestions">✕</button>
+        </div>
+        <p class="sidebar-description">Tap any question to fill the chat input instantly.</p>
+        <div id="chipsContainer">
+          <div class="chips-group" id="enChips">
+            <button type="button" class="chip" data-lang="en">How do I treat leaf spot?</button>
+            <button type="button" class="chip" data-lang="en">When should I plant maize?</button>
+            <button type="button" class="chip" data-lang="en">How do I store my harvest?</button>
+            <button type="button" class="chip" data-lang="en">What is the best fertilizer for tomatoes?</button>
+            <button type="button" class="chip" data-lang="en">How do I improve my soil?</button>
+            <button type="button" class="chip" data-lang="en">How do I control pests?</button>
+          </div>
+          <div class="chips-group" id="twChips" style="display:none">
+            <button type="button" class="chip" data-lang="tw">Dɛn na menyɛ sɛ m'asase yɛ pa?</button>
+            <button type="button" class="chip" data-lang="tw">Bere bɛn na meto aburoɔ?</button>
+            <button type="button" class="chip" data-lang="tw">Dɛn na menyɛ wɔ abura mu yadeɛ ho?</button>
+            <button type="button" class="chip" data-lang="tw">Ferefere bɛn na ɛyɛ dɛ wɔ tamato ho?</button>
+            <button type="button" class="chip" data-lang="tw">Dɛn ferefere na ɛboa m'asase mu?</button>
+            <button type="button" class="chip" data-lang="tw">Dɛn na menyɛ wɔ adwummaker ho?</button>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <div class="mobile-overlay" id="mobileOverlay"></div>
+
+
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

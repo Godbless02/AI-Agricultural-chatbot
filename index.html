@@ -24,6 +24,9 @@
       </div>
       <div class="topbar-right">
         <div class="mobile-language-toggle mobile-only"></div>
+        <span id="userBadge" class="user-badge"></span>
+        <button id="loginBtn" class="topbar-auth-btn" onclick="window.location.href='/auth.html'" style="display:none">Log In</button>
+        <button id="logoutBtn" class="topbar-auth-btn logout" style="display:none">Log Out</button>
         <button class="theme-toggle-button" type="button" aria-label="Switch theme">🌙</button>
         <button class="suggestions-toggle-button" type="button" aria-label="Show suggestions" title="Quick suggestions">⋮</button>
         <button class="clear-chat-button" type="button">Clear Chat</button>
@@ -32,7 +35,6 @@
 
     <div class="main-layout">
 
-      <!-- LEFT SIDEBAR -->
       <aside class="sidebar" id="leftSidebar">
         <div class="sidebar-brand">
           <div class="sidebar-icon">🌾</div>
@@ -64,10 +66,8 @@
             </div>
           </div>
         </div>
-
       </aside>
 
-      <!-- MAIN CHAT -->
       <section class="chat-area">
         <div class="chat-content">
           <div class="messages" id="messages"></div>
@@ -90,7 +90,6 @@
         </div>
       </section>
 
-      <!-- RIGHT SIDEBAR: Quick Suggestions -->
       <aside class="suggestions-sidebar open" id="suggestionsSidebar">
         <div class="suggestions-header">
           <span class="suggestions-title">💡 Try asking</span>
@@ -120,8 +119,6 @@
     </div>
 
     <div class="mobile-overlay" id="mobileOverlay"></div>
-
-
   </div>
   <script src="app.js"></script>
 </body>

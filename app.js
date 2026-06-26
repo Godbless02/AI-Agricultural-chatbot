@@ -1,5 +1,5 @@
 // ── CONSTANTS ────────────────────────────────────────────────────
-const API = 'http://127.0.0.1:5000';
+const API = '';
 const STORAGE_KEY_CURRENT  = 'agribot_current_user'; // who is logged in now
 const STORAGE_KEY_ALL      = 'agribot_all_users';    // all user profiles + their chats
 
@@ -205,48 +205,6 @@ function renderWelcome(isReturning) {
   box.textContent = getWelcomeText(isReturning || false);
   msgs.appendChild(box);
   scrollBottom();
-}
-
-// ══════════════════════════════════════════════════════════════════
-// SEND MESSAGE
-// ══════════════════════════════════════════════════════════════════
-
-function handleSend() {
-  const input = document.getElementById('chatInput');
-  const text  = input.value.trim();
-  if (!text) return;
-
-  appendMessage(text, 'user');
-  input.value = '';
-  updateCharCount();
-
-  const typingEl = showTyping();
-  const sessId   = getCurrentSessionId();
-
-  fetch(`${API}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: text,
-      language: currentLang,
-      session_id: sessId,
-      username: currentUser
-    })
-  })
-  .then(r => r.json())
-  .then(data => {
-    typingEl.remove();
-    appendMessage(data.response, 'bot');
-
-    // Save message to this user's profile
-    const title = text.length > 35 ? text.substring(0, 35) + '...' : text;
-    saveSessionMessage(currentUser, sessId, currentLang, title, text, data.response);
-    loadSidebarHistory();
-  })
-  .catch(() => {
-    typingEl.remove();
-    appendMessage('Sorry, the server is not responding. Please make sure the app is running.', 'bot');
-  });
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -4,4 +4,3 @@ scikit-learn
 huggingface_hub
 numpy
 gunicorn
-requests

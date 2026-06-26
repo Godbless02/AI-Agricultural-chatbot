@@ -605,12 +605,13 @@ NAME_PH   = ['my name is','i am ','i\'m ','call me ']
 VAGUE     = ['help','help me','i need help','i have a problem','i have a question',
              'i want to know','tell me','what can you do','what do you know']
 
-def detect_topic(text):
+def detect_topic(text, lang='en'):
     """Return the best matching topic for a given input text."""
     t = text.lower()
+    key = 'keywords_tw' if lang == 'tw' else 'keywords_en'
     best_topic, best_score = None, 0
     for topic, info in TOPICS.items():
-        score = sum(1 for kw in info['keywords'] if kw in t)
+        score = sum(1 for kw in info[key] if kw in t)
         if score > best_score:
             best_score = score
             best_topic = topic
@@ -628,19 +629,6 @@ def get_topic_display_name(topic, lang='en'):
     if lang == 'tw':
         return info.get('tw_name', topic)
     return topic
-
-def all_topics_list():
-    """Return a formatted string listing all topics."""
-    lines = [f"{info['icon']} {topic}" for topic, info in TOPICS.items()]
-    return "\n".join(lines)
-
-def topic_suggestions(topic):
-    """Return suggestions for a given topic."""
-    info = TOPICS.get(topic, {})
-    icon = info.get('icon','🌱')
-    suggestions = info.get('suggestions', [])
-    lines = [f"  • {q}" for q in suggestions[:5]]
-    return icon, "\n".join(lines)
 
 def get_answer(question, lang, username=None):
     q  = question.strip()
@@ -782,7 +770,7 @@ def get_topics():
     return jsonify({
         topic: {
             "icon": info['icon'],
-            "suggestions": info['suggestions']
+            "suggestions": info['suggestions_en']
         }
         for topic, info in TOPICS.items()
     })
@@ -810,11 +798,16 @@ def topic_suggestions_route():
 def health():
     return jsonify({"status":"ok","en_pairs":len(en_qs),"tw_pairs":len(tw_qs),"topics":len(TOPICS)})
 
+ALLOWED_STATIC_FILES = {'app.js', 'style.css'}
+
 @app.route('/')
-def index(): return send_from_directory('.','index.html')
+def index(): return send_from_directory('.', 'index.html')
 
 @app.route('/<path:f>')
-def static_files(f): return send_from_directory('.',f)
+def static_files(f):
+    if f not in ALLOWED_STATIC_FILES and not f.startswith('assets/'):
+        return jsonify({"error": "Not found"}), 404
+    return send_from_directory('.', f)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

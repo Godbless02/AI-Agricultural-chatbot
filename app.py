@@ -698,20 +698,26 @@ def get_answer(question, lang, username=None):
     detected_topic = detect_topic(ql, lang)
 
     # ── Run retrieval ─────────────────────────────────────────────
-    CONFIDENCE = 0.18
+    # CONFIDENCE alone is too low a bar: common words like "what/is/best"
+    # are enough to push unrelated questions (e.g. "capital of France")
+    # over 0.18. Requiring a topic-keyword match too (or a much higher
+    # score that's basically an exact hit) filters those out without
+    # rejecting genuine paraphrases, which almost always hit a topic.
+    CONFIDENCE      = 0.18
+    HIGH_CONFIDENCE = 0.6
     if is_tw:
         vec    = tw_vec.transform([q])
         scores = cosine_similarity(vec, tw_vecs)[0]
         best   = int(np.argmax(scores))
         conf   = float(scores[best])
-        if conf >= CONFIDENCE:
+        if conf >= HIGH_CONFIDENCE or (conf >= CONFIDENCE and detected_topic):
             return {"type":"answer","text": tw_as[best]}
     else:
         vec    = en_vec.transform([q])
         scores = cosine_similarity(vec, en_vecs)[0]
         best   = int(np.argmax(scores))
         conf   = float(scores[best])
-        if conf >= CONFIDENCE:
+        if conf >= HIGH_CONFIDENCE or (conf >= CONFIDENCE and detected_topic):
             return {"type":"answer","text": en_as[best]}
 
     # ── Topic detected but no exact match ─────────────────────────

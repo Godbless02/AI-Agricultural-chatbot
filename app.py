@@ -765,54 +765,7 @@ def get_answer(question, lang, username=None):
     }
 
 # ── ROUTES ────────────────────────────────────────────────────────
-   else:
-        vec    = en_vec.transform([q])
-        scores = cosine_similarity(vec, en_vecs)[0]
-        best   = int(np.argmax(scores))
-        conf   = float(scores[best])
-        if conf >= CONFIDENCE:
-            return {"type":"answer","text": en_as[best]}
-
-    # ── Topic detected but no exact match ─────────────────────────
-    if detected_topic:
-        icon      = TOPICS[detected_topic]['icon']
-        suggs     = get_suggestions(detected_topic, lang)
-        disp_name = get_topic_display_name(detected_topic, lang)
-        if is_tw:
-            return {
-                "type": "low_confidence",
-                "text": f"Mahunu sɛ worerebisa fa **{disp_name}** {icon} ho — eyi yɛ topic a mewɔ ho nsɛm! Nanso, menni aseɛ pɛpɛɛpɛ wɔ saa bere yi.\n\nEyi betumi aba fia sɛ:\n• Wo asɛmmisa yɛ pɛ paa ma me training\n• Wuhia sɛ wo kyer me asɛm bio sɛ mete aseɛ yie\n\nAsɛmmisa a metumi aboa wo wɔ {disp_name} ho:",
-                "suggestions": suggs,
-                "topic": detected_topic
-            }
-        return {
-            "type": "low_confidence",
-            "text": f"I can see you are asking about **{detected_topic}** {icon} — that is one of my topics! However, I do not have a specific answer to your exact question yet.\n\nThis could be because:\n• The question is too specific for my current training\n• I may need more details\n\nHere are some related questions I can help you with:",
-            "suggestions": suggs,
-            "topic": detected_topic
-        }
-
-    # ── Completely off-topic ──────────────────────────────────────
-    topic_icons    = {t: TOPICS[t]['icon'] for t in TOPICS}
-    topic_names_tw = {t: TOPICS[t].get('tw_name', t) for t in TOPICS}
-    if is_tw:
-        return {
-            "type": "off_topic",
-            "text": f"Kafra{nb}, me yɛ AgriBotGH — chatbot a wɔayɛ no pɛ ma okuafo adwuma. Metumi aboa wo pɛ wɔ okuafo nsɛm ho. 🌾\n\nPaw topic baako fi aseɛ yi na mɛkyerɛ wo asɛm a metumi aboa wo wɔ so:",
-            "topics": list(TOPICS.keys()),
-            "topic_icons": topic_icons,
-            "topic_names_tw": topic_names_tw
-        }
-    return {
-        "type": "off_topic",
-        "text": f"Sorry{nb}, I am AgriBotGH — a specialised agricultural assistant. I can only help with farming-related topics. 🌾\n\nPlease select a topic below and I will show you what I can help you with:",
-        "topics": list(TOPICS.keys()),
-        "topic_icons": topic_icons,
-        "topic_names_tw": topic_names_tw
-    }
-
-# ── ROUTES ────────────────────────────────────────────────────────
-, methods=['POST'])
+@app.route('/api/chat', methods=['POST'])
 def chat():
     d        = request.get_json()
     question = d.get('message','').strip()

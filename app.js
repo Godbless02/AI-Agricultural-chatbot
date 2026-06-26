@@ -525,7 +525,7 @@ function renderBotResponse(data, sessId, userText) {
   } else if (type === 'topics' || type === 'off_topic') {
     // Show topic selection grid
     appendMessage(data.text, 'bot');
-    appendTopicsGrid(data.topics, data.topic_icons);
+    appendTopicsGrid(data.topics, data.topic_icons, data.topic_names_tw);
     saveSessionMessage(currentUser, sessId, currentLang,
       userText.length > 35 ? userText.substring(0,35)+'...' : userText,
       userText, data.text);
@@ -542,7 +542,7 @@ function renderBotResponse(data, sessId, userText) {
   }
 }
 
-function appendTopicsGrid(topics, icons) {
+function appendTopicsGrid(topics, icons, twNames) {
   const msgs = document.getElementById('messages');
   const wrapper = document.createElement('div');
   wrapper.className = 'topics-grid-wrapper';
@@ -553,7 +553,11 @@ function appendTopicsGrid(topics, icons) {
   topics.forEach(topic => {
     const btn = document.createElement('button');
     btn.className = 'topic-btn';
-    btn.innerHTML = `<span class="topic-icon">${icons[topic] || '🌱'}</span><span class="topic-name">${topic}</span>`;
+    // Show Twi name when in Twi mode
+    const displayName = (currentLang === 'tw' && twNames && twNames[topic])
+      ? twNames[topic]
+      : topic;
+    btn.innerHTML = `<span class="topic-icon">${icons[topic] || '🌱'}</span><span class="topic-name">${displayName}</span>`;
     btn.onclick = () => selectTopic(topic, icons[topic]);
     grid.appendChild(btn);
   });
@@ -564,15 +568,17 @@ function appendTopicsGrid(topics, icons) {
 }
 
 function selectTopic(topic, icon) {
-  // Show a follow-up message asking what they want within this topic
   fetch(`${API}/api/topic-suggestions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic })
+    body: JSON.stringify({ topic, lang: currentLang })
   })
   .then(r => r.json())
   .then(data => {
-    const followUp = `You selected **${icon} ${topic}**.\n\nWhat would you like to know? Here are some ideas:`;
+    const displayName = data.display_name || topic;
+    const followUp = currentLang === 'tw'
+      ? `Wapaw **${icon} ${displayName}**.\n\nDɛn na wopɛ sɛ wonim? Asɛmmisa bi a wotumi bisa:`
+      : `You selected **${icon} ${displayName}**.\n\nWhat would you like to know? Here are some ideas:`;
     appendMessage(followUp, 'bot');
     appendSuggestionButtons(data.suggestions, topic);
   });

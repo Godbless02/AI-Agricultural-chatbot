@@ -1,460 +1,600 @@
+// ── CONSTANTS ────────────────────────────────────────────────────
 const API = 'http://127.0.0.1:5000';
+const STORAGE_KEY_CURRENT  = 'agribot_current_user'; // who is logged in now
+const STORAGE_KEY_ALL      = 'agribot_all_users';    // all user profiles + their chats
 
-const messagesContainer = document.getElementById('messages');
-const chatInput = document.getElementById('chatInput');
-const sendButton = document.getElementById('sendButton');
-const voiceButton = document.getElementById('voiceButton');
-const charCounter = document.getElementById('charCounter');
-const clearChatButton = document.querySelector('.clear-chat-button');
-const newChatBtn = document.getElementById('newChatBtn');
-const themeToggleButton = document.querySelector('.theme-toggle-button');
-const mobileMenuButton = document.querySelector('.mobile-menu-button');
-const sidebar = document.getElementById('leftSidebar');
-const mobileOverlay = document.getElementById('mobileOverlay');
-const mobileLanguageWrapper = document.querySelector('.mobile-language-toggle');
-const currentLangIndicator = document.getElementById('currentLangIndicator');
-const suggestionsSidebar = document.getElementById('suggestionsSidebar');
-const suggestionsClose = document.querySelector('.suggestions-close');
-const suggestionsToggle = document.querySelector('.suggestions-toggle-button');
-const enChips = document.getElementById('enChips');
-const twChips = document.getElementById('twChips');
-const enHistoryList = document.getElementById('enHistoryList');
-const twHistoryList = document.getElementById('twHistoryList');
-const userBadge = document.getElementById('userBadge');
-const loginBtn = document.getElementById('loginBtn');
-const logoutBtn = document.getElementById('logoutBtn');
+// ── STATE ────────────────────────────────────────────────────────
+let currentUser  = '';
+let currentLang  = 'en';
+let enSessionId  = null;
+let twSessionId  = null;
+let welcomeLang  = 'en';
+let isDarkTheme  = false;
 
-let selectedLanguage = 'en';
-let currentTheme = 'day';
-let typingIndicator = null;
-let isRecording = false;
-let mediaRecorder = null;
-let audioChunks = [];
-let mediaStream = null;
-let recordingTimer = null;
-let recordingSeconds = 0;
-let currentUser = null;
+// ══════════════════════════════════════════════════════════════════
+// STORAGE HELPERS — all data stored per username
+// ══════════════════════════════════════════════════════════════════
 
-// Separate session id per language — this is the core fix
-let enSessionId = null;
-let twSessionId = null;
-
-const WELCOME = {
-  en: 'Hello! I am AgriBotGH. Ask me any farming question in English or Twi and I will help you.',
-  tw: "Akwaaba! Yɛfrɛ me AgriBotGH. Wo bɛtumi abisa me nsɛmfua biara ɛfa kuaeɛ ho wɔ yɛ man yi mu."
-};
-
-function personalisedWelcome(lang){
-  if(!currentUser) return WELCOME[lang];
-  const name = currentUser.username;
-  if(lang === 'en') return `Hello ${name}! 🌱 I am AgriBotGH. Ask me any farming question in English or Twi and I will help you.`;
-  return `Akwaaba ${name}! 🌱 Yɛfrɛ me AgriBotGH. Wo bɛtumi abisa me nsɛmfua biara ɛfa kuaeɛ ho wɔ yɛ man yi mu.`;
+function getAllUsers() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY_ALL)) || {}; }
+  catch { return {}; }
 }
 
-function getTimestamp(){
-  const now=new Date(); let h=now.getHours(); const m=now.getMinutes().toString().padStart(2,'0');
-  const ap=h>=12?'PM':'AM'; h=h%12||12; return `${h}:${m} ${ap}`;
+function saveAllUsers(users) {
+  localStorage.setItem(STORAGE_KEY_ALL, JSON.stringify(users));
 }
 
-function createWelcomeMessage(){
-  const box=document.createElement('div');
-  box.className='welcome-box';
-  box.textContent=personalisedWelcome(selectedLanguage);
-  messagesContainer.appendChild(box);
-  scrollToBottom();
+function getUserProfile(name) {
+  const all = getAllUsers();
+  const key = name.trim().toLowerCase();
+  return all[key] || null;
 }
 
-function appendMessage({text,type,skipSave}){
-  const card=document.createElement('div');
-  card.className=`message-card ${type}-message`;
-  const bubble=document.createElement('div');
-  bubble.className='bubble';
-  if(type==='bot'){
-    const icon=document.createElement('span');
-    icon.className='message-icon'; icon.textContent='🤖';
-    bubble.appendChild(icon);
+function createUserProfile(name, lang) {
+  const all = getAllUsers();
+  const key = name.trim().toLowerCase();
+  if (!all[key]) {
+    all[key] = {
+      displayName: name.trim(),
+      lang: lang,
+      sessions: {}       // sessId -> { id, lang, title, messages, createdAt }
+    };
+    saveAllUsers(all);
   }
-  const span=document.createElement('span'); span.textContent=text;
-  bubble.appendChild(span); card.appendChild(bubble);
-  const ts=document.createElement('div');
-  ts.className='message-timestamp'+(type==='user'?' right':'');
-  ts.textContent=getTimestamp();
-  card.appendChild(ts);
-  messagesContainer.appendChild(card);
-  scrollToBottom();
+  return all[key];
 }
 
-function showTypingIndicator(){
-  typingIndicator=document.createElement('div');
-  typingIndicator.className='message-card typing-indicator';
-  const bubble=document.createElement('div'); bubble.className='bubble';
-  const dots=document.createElement('div'); dots.className='typing-dots';
-  dots.innerHTML='<span>●</span><span>●</span><span>●</span>';
-  bubble.appendChild(dots); typingIndicator.appendChild(bubble);
-  messagesContainer.appendChild(typingIndicator); scrollToBottom();
-}
-function hideTypingIndicator(){ if(typingIndicator){typingIndicator.remove(); typingIndicator=null;} }
-
-function generateSessionId(){ return 'sess_'+Date.now()+'_'+Math.random().toString(36).substr(2,9); }
-
-function getCurrentSessionId(){
-  return selectedLanguage==='en' ? enSessionId : twSessionId;
-}
-function setCurrentSessionId(id){
-  if(selectedLanguage==='en') enSessionId=id; else twSessionId=id;
-}
-
-// ── CLEAR / NEW CHAT ──────────────────────────────────────────────
-function startFreshChat(lang){
-  messagesContainer.innerHTML='';
-  if(lang==='en') enSessionId = generateSessionId();
-  else twSessionId = generateSessionId();
-  createWelcomeMessage();
-}
-
-function clearChat(){
-  startFreshChat(selectedLanguage);
-  chatInput.value=''; updateCharCounter(); chatInput.focus();
-}
-
-// ── SEND MESSAGE ──────────────────────────────────────────────────
-function handleSend(){
-  const text=chatInput.value.trim();
-  if(!text) return;
-  appendMessage({text,type:'user'});
-  chatInput.value=''; updateCharCounter(); chatInput.focus();
-  showTypingIndicator();
-  sendToBackend(text,selectedLanguage).then(response=>{
-    hideTypingIndicator();
-    appendMessage({text:response,type:'bot'});
-    if(currentUser) loadSidebarHistory();
-  });
-}
-
-async function sendToBackend(message,language){
-  try{
-    if(!getCurrentSessionId()) setCurrentSessionId(generateSessionId());
-    const res=await fetch(`${API}/api/chat`,{
-      method:'POST', credentials:'include',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message,language,session_id:getCurrentSessionId()})
-    });
-    const data=await res.json();
-    return data.response;
-  }catch(e){
-    return 'Sorry, the backend is unavailable right now. Please make sure the server is running.';
+function updateUserProfile(name, data) {
+  const all = getAllUsers();
+  const key = name.trim().toLowerCase();
+  if (all[key]) {
+    all[key] = { ...all[key], ...data };
+    saveAllUsers(all);
   }
 }
 
-// ── CHAR COUNTER ──────────────────────────────────────────────────
-function updateCharCounter(){
-  const len=chatInput.value.length;
-  charCounter.textContent=`${len}/2000`;
-  charCounter.classList.toggle('warning',len>1800);
-}
+function saveSessionMessage(name, sessId, lang, title, userMsg, botMsg) {
+  const all = getAllUsers();
+  const key = name.trim().toLowerCase();
+  if (!all[key]) return;
 
-// ── LANGUAGE SWITCH (CORE FIX) ─────────────────────────────────────
-// When switching language: save current chat to its history (already
-// saved via backend as it happens) then load that language's most
-// recent session OR start a fresh chat if none exists yet.
-function setLanguage(lang){
-  if(lang === selectedLanguage) return; // no-op if same
-
-  selectedLanguage = lang;
-
-  document.querySelectorAll('.lang-button').forEach(btn=>{
-    btn.classList.toggle('active', btn.dataset.lang===lang);
-  });
-
-  currentLangIndicator.innerHTML = `Chatting in: <strong>${lang==='en'?'English':'Twi'}</strong>`;
-
-  if(enChips) enChips.style.display = lang==='en' ? 'flex' : 'none';
-  if(twChips) twChips.style.display = lang==='tw' ? 'flex' : 'none';
-
-  chatInput.placeholder = lang==='en' ? 'Type your question here...' : 'Kyerɛ wo asemmisa ha...';
-
-  // Clear the view and start a brand new chat for this language
-  // (previous language's chat remains saved in its own session)
-  startFreshChat(lang);
-}
-
-function setupLanguageToggle(){
-  document.querySelectorAll('.lang-button').forEach(btn=>{
-    btn.addEventListener('click',()=>setLanguage(btn.dataset.lang));
-  });
-  if(mobileLanguageWrapper){
-    ['en','tw'].forEach((lang,i)=>{
-      const btn=document.createElement('button');
-      btn.type='button';
-      btn.className='lang-button'+(i===0?' active':'');
-      btn.dataset.lang=lang;
-      btn.textContent=lang==='en'?'English':'Twi';
-      btn.addEventListener('click',()=>setLanguage(lang));
-      mobileLanguageWrapper.appendChild(btn);
-    });
+  if (!all[key].sessions[sessId]) {
+    all[key].sessions[sessId] = {
+      id: sessId, lang, title,
+      messages: [], createdAt: Date.now()
+    };
   }
+  all[key].sessions[sessId].messages.push(
+    { role: 'user', text: userMsg, time: getTime() },
+    { role: 'bot',  text: botMsg,  time: getTime() }
+  );
+  saveAllUsers(all);
 }
 
-// ── SUGGESTIONS SIDEBAR ─────────────────────────────────────────
-function setupSuggestionsSidebar(){
-  if(suggestionsClose) suggestionsClose.addEventListener('click',()=>suggestionsSidebar.classList.remove('open'));
-  if(suggestionsToggle) suggestionsToggle.addEventListener('click',()=>suggestionsSidebar.classList.toggle('open'));
-}
-function setupQuickChips(){
-  document.querySelectorAll('.chip').forEach(chip=>{
-    chip.addEventListener('click',()=>{
-      chatInput.value=chip.textContent; updateCharCounter(); chatInput.focus();
-      if(chip.dataset.lang && chip.dataset.lang!==selectedLanguage) setLanguage(chip.dataset.lang);
-    });
-  });
-}
-function setupMobileSidebar(){
-  if(mobileMenuButton) mobileMenuButton.addEventListener('click',()=>{
-    sidebar.classList.toggle('mobile-open');
-    mobileOverlay.style.display=sidebar.classList.contains('mobile-open')?'block':'none';
-  });
-  if(mobileOverlay) mobileOverlay.addEventListener('click',()=>{
-    sidebar.classList.remove('mobile-open');
-    mobileOverlay.style.display='none';
-  });
+// ══════════════════════════════════════════════════════════════════
+// WELCOME SCREEN
+// ══════════════════════════════════════════════════════════════════
+
+function selectWelcomeLang(lang) {
+  welcomeLang = lang;
+  document.getElementById('langEnBtn').classList.toggle('active', lang === 'en');
+  document.getElementById('langTwBtn').classList.toggle('active', lang === 'tw');
 }
 
-// ── VOICE RECORDING (self-contained, no external API) ─────────────
-function formatTime(s){return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;}
-function micIconHTML(){
-  return `<svg class="voice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <path d="M12 1c-1.657 0-3 1.343-3 3v7c0 1.657 1.343 3 3 3s3-1.343 3-3V4c0-1.657-1.343-3-3-3z"/>
-    <path d="M19 10c0 3.314-2.686 6-6 6s-6-2.686-6-6"/>
-    <line x1="12" y1="19" x2="12" y2="23"/>
-    <line x1="8" y1="23" x2="16" y2="23"/>
-  </svg>`;
-}
-let recognition=null, liveTranscript='', audioContext=null, analyser=null, animationId=null;
+function startChat() {
+  const nameInput = document.getElementById('nameInput').value.trim();
+  const errEl     = document.getElementById('welcomeError');
 
-function startRecordingTimer(){
-  recordingSeconds=0; voiceButton.setAttribute('data-timer','00:00');
-  recordingTimer=setInterval(()=>{
-    recordingSeconds++;
-    voiceButton.setAttribute('data-timer',formatTime(recordingSeconds));
-    if(recordingSeconds>=120) stopVoiceRecording();
-  },1000);
-}
-function stopRecordingTimer(){ if(recordingTimer){clearInterval(recordingTimer); recordingTimer=null;} voiceButton.removeAttribute('data-timer'); }
-
-function startWaveform(stream){
-  const canvas=document.getElementById('voiceCanvas');
-  if(!canvas) return;
-  canvas.style.display='block';
-  audioContext=new (window.AudioContext||window.webkitAudioContext)();
-  analyser=audioContext.createAnalyser(); analyser.fftSize=64;
-  const source=audioContext.createMediaStreamSource(stream); source.connect(analyser);
-  const bufferLength=analyser.frequencyBinCount; const dataArray=new Uint8Array(bufferLength);
-  const ctx=canvas.getContext('2d');
-  function draw(){
-    animationId=requestAnimationFrame(draw);
-    analyser.getByteFrequencyData(dataArray);
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    const barW=canvas.width/bufferLength;
-    dataArray.forEach((val,i)=>{
-      const barH=(val/255)*canvas.height;
-      ctx.fillStyle=`rgba(46,125,50,${0.4+(val/255)*0.6})`;
-      ctx.fillRect(i*barW,canvas.height-barH,barW-1,barH);
-    });
-  }
-  draw();
-}
-function stopWaveform(){
-  if(animationId){cancelAnimationFrame(animationId); animationId=null;}
-  if(audioContext){audioContext.close(); audioContext=null;}
-  const canvas=document.getElementById('voiceCanvas');
-  if(canvas) canvas.style.display='none';
-}
-
-function startLiveRecognition(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR) return;
-  recognition=new SR();
-  recognition.lang=selectedLanguage==='tw'?'ak-GH':'en-GH';
-  recognition.continuous=true; recognition.interimResults=true;
-  liveTranscript='';
-  recognition.onresult=(event)=>{
-    let interim='',final='';
-    for(let i=event.resultIndex;i<event.results.length;i++){
-      const t=event.results[i][0].transcript;
-      if(event.results[i].isFinal) final+=t; else interim+=t;
-    }
-    liveTranscript+=final;
-    chatInput.value=liveTranscript+interim;
-    updateCharCounter();
-  };
-  recognition.onerror=()=>{};
-  recognition.onend=()=>{ if(isRecording) recognition.start(); };
-  recognition.start();
-}
-
-async function startVoiceRecording(){
-  try{
-    mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
-  }catch(err){
-    showTip('⚠️ Microphone access denied. Please allow microphone access in browser settings.','error');
+  if (!nameInput) {
+    errEl.textContent = 'Please enter your name to continue.';
     return;
   }
-  audioChunks=[];
-  mediaRecorder=new MediaRecorder(mediaStream,{mimeType:'audio/webm'});
-  mediaRecorder.ondataavailable=(e)=>{if(e.data.size>0)audioChunks.push(e.data);};
-  mediaRecorder.onstop=()=>{ mediaStream.getTracks().forEach(t=>t.stop()); stopWaveform(); };
+  errEl.textContent = '';
 
-  isRecording=true; liveTranscript=''; chatInput.value='';
-  chatInput.placeholder=selectedLanguage==='en'?'Listening...':'Retie...';
-  voiceButton.classList.add('recording'); voiceButton.innerHTML='⏹';
-  voiceButton.setAttribute('aria-label','Stop recording');
+  const profile = getUserProfile(nameInput);
 
-  startRecordingTimer(); startWaveform(mediaStream); startLiveRecognition();
-  mediaRecorder.start(200);
-}
-
-function stopVoiceRecording(){
-  if(!isRecording) return;
-  isRecording=false; stopRecordingTimer();
-  if(recognition){ recognition.onend=null; recognition.stop(); recognition=null; }
-  if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop();
-  voiceButton.classList.remove('recording'); voiceButton.innerHTML=micIconHTML();
-  voiceButton.setAttribute('aria-label','Record voice message');
-  chatInput.placeholder=selectedLanguage==='en'?'Type your question here...':'Kyerɛ wo asemmisa ha...';
-
-  const finalText=chatInput.value.trim();
-  if(finalText){
-    showTip('✅ Voice captured — review then press Send','success');
-    chatInput.focus(); chatInput.select();
-  }
-}
-
-function showTip(text,type='success'){
-  const el=document.createElement('div');
-  el.className='voice-tip'+(type==='error'?' error':'');
-  el.textContent=text;
-  messagesContainer.appendChild(el); scrollToBottom();
-  setTimeout(()=>{if(el.parentNode)el.remove();},3000);
-}
-
-// ── THEME ─────────────────────────────────────────────────────────
-function applyTheme(theme){
-  currentTheme=theme;
-  document.body.dataset.theme=theme;
-  if(themeToggleButton){
-    themeToggleButton.textContent=theme==='day'?'🌙':'☀️';
-    themeToggleButton.setAttribute('aria-label',theme==='day'?'Switch to night theme':'Switch to day theme');
-  }
-}
-function toggleTheme(){ applyTheme(currentTheme==='day'?'night':'day'); }
-
-// ── AUTH ──────────────────────────────────────────────────────────
-async function checkAuth(){
-  try{
-    const res=await fetch(`${API}/api/auth/me`,{credentials:'include'});
-    if(res.ok){
-      const data=await res.json();
-      currentUser=data.user;
-    } else {
-      currentUser=null;
-    }
-  }catch(e){ currentUser=null; }
-  updateUserUI();
-}
-
-function updateUserUI(){
-  if(currentUser){
-    if(userBadge) userBadge.textContent='👤 '+currentUser.username;
-    if(logoutBtn) logoutBtn.style.display='inline-flex';
-    if(loginBtn) loginBtn.style.display='none';
-    loadSidebarHistory();
+  if (profile) {
+    // RETURNING USER — restore their language and sessions
+    currentUser = profile.displayName;
+    currentLang = profile.lang || welcomeLang;
   } else {
-    if(userBadge) userBadge.textContent='';
-    if(logoutBtn) logoutBtn.style.display='none';
-    if(loginBtn) loginBtn.style.display='inline-flex';
+    // NEW USER — create fresh profile
+    currentUser = nameInput;
+    currentLang = welcomeLang;
+    createUserProfile(nameInput, welcomeLang);
+  }
+
+  // Remember who is currently using the app
+  localStorage.setItem(STORAGE_KEY_CURRENT, currentUser);
+
+  // Launch app
+  document.getElementById('welcomeScreen').style.display = 'none';
+  document.getElementById('appShell').style.display      = 'flex';
+  document.getElementById('appShell').style.flexDirection = 'column';
+  initApp(profile !== null); // pass true if returning user
+}
+
+function changeName() {
+  // Save current user's language preference before leaving
+  if (currentUser) {
+    updateUserProfile(currentUser, { lang: currentLang });
+  }
+  // Clear current session state
+  enSessionId = null;
+  twSessionId = null;
+  currentUser = '';
+
+  // Go back to welcome screen — blank name field so new user enters their own name
+  document.getElementById('appShell').style.display      = 'none';
+  document.getElementById('welcomeScreen').style.display = 'flex';
+  document.getElementById('nameInput').value             = '';
+  document.getElementById('welcomeError').textContent    = '';
+  selectWelcomeLang('en');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════
+
+function initApp(isReturning) {
+  document.getElementById('userBadge').textContent = '👤 ' + currentUser;
+  document.getElementById('chatInput').addEventListener('input', updateCharCount);
+  document.getElementById('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); handleSend(); }
+  });
+
+  setLanguageUI(currentLang);
+
+  // Always start with a new session for this visit
+  enSessionId = generateId();
+  twSessionId = generateId();
+
+  renderWelcome(isReturning);
+  loadSidebarHistory();
+}
+
+window.onload = function () {
+  const lastUser = localStorage.getItem(STORAGE_KEY_CURRENT);
+  if (lastUser) {
+    const profile = getUserProfile(lastUser);
+    if (profile) {
+      // Auto-login the last user
+      currentUser = profile.displayName;
+      currentLang = profile.lang || 'en';
+      document.getElementById('welcomeScreen').style.display = 'none';
+      document.getElementById('appShell').style.display      = 'flex';
+      document.getElementById('appShell').style.flexDirection = 'column';
+      initApp(true);
+      return;
+    }
+  }
+  // Show welcome screen for new visitor
+  document.getElementById('welcomeScreen').style.display = 'flex';
+  document.getElementById('appShell').style.display      = 'none';
+};
+
+// ══════════════════════════════════════════════════════════════════
+// SESSION HELPERS
+// ══════════════════════════════════════════════════════════════════
+
+function generateId() {
+  return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 8);
+}
+
+function getCurrentSessionId() {
+  return currentLang === 'en' ? enSessionId : twSessionId;
+}
+
+function getWelcomeText(isReturning) {
+  if (currentLang === 'en') {
+    return isReturning
+      ? `Welcome back, ${currentUser}! 🌱 Great to see you again. Ask me anything about crops, soil, pests, livestock or fish farming.`
+      : `Hello ${currentUser}! 🌱 I am AgriBotGH, your bilingual farming assistant. Ask me anything about crops, soil, pests, livestock or fish farming in English or Twi!`;
+  } else {
+    return isReturning
+      ? `Akwaaba bio, ${currentUser}! 🌱 Ɛyɛ me anigye sɛ mehuu wo bio. Bisa me nsɛmfua biara fa okuafo adwuma ho!`
+      : `Akwaaba ${currentUser}! 🌱 Yɛfrɛ me AgriBotGH. Bisa me nsɛmfua biara ɛfa okuafo adwuma ho wɔ English anaa Twi!`;
   }
 }
 
-async function doLogout(){
-  await fetch(`${API}/api/auth/logout`,{method:'POST',credentials:'include'});
-  currentUser=null; updateUserUI();
-  window.location.href='/auth.html';
+function renderWelcome(isReturning) {
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+  const box = document.createElement('div');
+  box.className   = 'welcome-bubble';
+  box.textContent = getWelcomeText(isReturning || false);
+  msgs.appendChild(box);
+  scrollBottom();
 }
 
-// ── SAVED CHAT HISTORY (per-language) ──────────────────────────────
-async function loadSidebarHistory(){
-  if(!currentUser) return;
-  try{
-    const res=await fetch(`${API}/api/sessions`,{credentials:'include'});
-    if(!res.ok) return;
-    const data=await res.json();
-    renderSidebarHistory(data.sessions);
-  }catch(e){}
+// ══════════════════════════════════════════════════════════════════
+// SEND MESSAGE
+// ══════════════════════════════════════════════════════════════════
+
+function handleSend() {
+  const input = document.getElementById('chatInput');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  appendMessage(text, 'user');
+  input.value = '';
+  updateCharCount();
+
+  const typingEl = showTyping();
+  const sessId   = getCurrentSessionId();
+
+  fetch(`${API}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: text,
+      language: currentLang,
+      session_id: sessId,
+      username: currentUser
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    typingEl.remove();
+    appendMessage(data.response, 'bot');
+
+    // Save message to this user's profile
+    const title = text.length > 35 ? text.substring(0, 35) + '...' : text;
+    saveSessionMessage(currentUser, sessId, currentLang, title, text, data.response);
+    loadSidebarHistory();
+  })
+  .catch(() => {
+    typingEl.remove();
+    appendMessage('Sorry, the server is not responding. Please make sure the app is running.', 'bot');
+  });
 }
 
-function renderSidebarHistory(sessions){
-  if(!enHistoryList || !twHistoryList) return;
-  const enS=sessions.filter(s=>s.language==='en');
-  const twS=sessions.filter(s=>s.language==='tw');
+// ══════════════════════════════════════════════════════════════════
+// APPEND MESSAGE
+// ══════════════════════════════════════════════════════════════════
 
-  function build(list,container,activeId){
-    container.innerHTML='';
-    if(list.length===0){ container.innerHTML='<p class="empty-state-small">None yet</p>'; return; }
-    list.forEach(sess=>{
-      const item=document.createElement('div');
-      item.className='history-mini-item'+(sess.id===activeId?' active':'');
-      item.textContent=sess.title; item.title=sess.title;
-      item.addEventListener('click',()=>loadSession(sess.id, sess.language));
+function appendMessage(text, role) {
+  const msgs  = document.getElementById('messages');
+  const card  = document.createElement('div');
+  card.className = `message-card ${role}-message`;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  if (role === 'bot') {
+    const icon = document.createElement('span');
+    icon.className = 'msg-icon'; icon.textContent = '🤖';
+    bubble.appendChild(icon);
+  }
+  const span = document.createElement('span');
+  span.textContent = text;
+  bubble.appendChild(span);
+  card.appendChild(bubble);
+
+  const ts = document.createElement('div');
+  ts.className = 'msg-time' + (role === 'user' ? ' right' : '');
+  ts.textContent = getTime();
+  card.appendChild(ts);
+
+  msgs.appendChild(card);
+  scrollBottom();
+}
+
+function showTyping() {
+  const msgs = document.getElementById('messages');
+  const card = document.createElement('div');
+  card.className = 'message-card bot-message';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  const dots = document.createElement('div');
+  dots.className = 'typing-bubble';
+  dots.innerHTML = '<span></span><span></span><span></span>';
+  bubble.appendChild(dots);
+  card.appendChild(bubble);
+  msgs.appendChild(card);
+  scrollBottom();
+  return card;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SIDEBAR HISTORY — shows only THIS user's chats
+// ══════════════════════════════════════════════════════════════════
+
+function loadSidebarHistory() {
+  const all     = getAllUsers();
+  const key     = currentUser.trim().toLowerCase();
+  const profile = all[key];
+
+  const enList = document.getElementById('enHistory');
+  const twList = document.getElementById('twHistory');
+
+  if (!profile || !profile.sessions) {
+    enList.innerHTML = '<p class="history-empty">None yet</p>';
+    twList.innerHTML = '<p class="history-empty">None yet</p>';
+    return;
+  }
+
+  const sessions = Object.values(profile.sessions)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  const enSessions = sessions.filter(s => s.lang === 'en');
+  const twSessions = sessions.filter(s => s.lang === 'tw');
+
+  function render(list, container, activeSessId) {
+    container.innerHTML = '';
+    if (list.length === 0) {
+      container.innerHTML = '<p class="history-empty">None yet</p>';
+      return;
+    }
+    list.forEach(sess => {
+      const item = document.createElement('div');
+      item.className = 'history-item' + (sess.id === activeSessId ? ' active' : '');
+      item.textContent = sess.title;
+      item.title = sess.title;
+      item.onclick = () => loadSession(sess.id, sess.lang);
       container.appendChild(item);
     });
   }
-  build(enS, enHistoryList, enSessionId);
-  build(twS, twHistoryList, twSessionId);
+
+  render(enSessions, enList, enSessionId);
+  render(twSessions, twList, twSessionId);
 }
 
-async function loadSession(sessId, lang){
-  try{
-    const res=await fetch(`${API}/api/sessions/${sessId}`,{credentials:'include'});
-    if(!res.ok) return;
-    const data=await res.json();
+function loadSession(sessId, lang) {
+  const all     = getAllUsers();
+  const key     = currentUser.trim().toLowerCase();
+  const profile = all[key];
+  if (!profile) return;
 
-    if(lang !== selectedLanguage){
-      selectedLanguage = lang;
-      document.querySelectorAll('.lang-button').forEach(btn=>btn.classList.toggle('active', btn.dataset.lang===lang));
-      currentLangIndicator.innerHTML = `Chatting in: <strong>${lang==='en'?'English':'Twi'}</strong>`;
-      if(enChips) enChips.style.display = lang==='en' ? 'flex' : 'none';
-      if(twChips) twChips.style.display = lang==='tw' ? 'flex' : 'none';
-      chatInput.placeholder = lang==='en' ? 'Type your question here...' : 'Kyerɛ wo asemmisa ha...';
-    }
+  const sess = profile.sessions[sessId];
+  if (!sess) return;
 
-    setCurrentSessionId(sessId);
-    messagesContainer.innerHTML='';
-    data.messages.forEach(msg=>appendMessage({text:msg.message,type:msg.role,skipSave:true}));
-    scrollToBottom();
+  // Switch language UI if needed
+  if (lang !== currentLang) {
+    currentLang = lang;
+    setLanguageUI(lang);
+  }
+
+  // Mark as current session
+  if (lang === 'en') enSessionId = sessId;
+  else twSessionId = sessId;
+
+  // Render messages
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+  sess.messages.forEach(msg => appendMessage(msg.text, msg.role));
+  loadSidebarHistory();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// LANGUAGE SWITCH
+// ══════════════════════════════════════════════════════════════════
+
+function switchLanguage(lang) {
+  if (lang === currentLang) return;
+  currentLang = lang;
+  updateUserProfile(currentUser, { lang });
+  setLanguageUI(lang);
+
+  // Give this language a fresh session if it doesn't have one yet
+  if (lang === 'en' && !enSessionId) enSessionId = generateId();
+  if (lang === 'tw' && !twSessionId) twSessionId = generateId();
+
+  renderWelcome(false);
+  loadSidebarHistory();
+}
+
+function setLanguageUI(lang) {
+  document.getElementById('enBtn').classList.toggle('active', lang === 'en');
+  document.getElementById('twBtn').classList.toggle('active', lang === 'tw');
+  document.getElementById('langIndicator').innerHTML =
+    `Chatting in: <strong>${lang === 'en' ? 'English' : 'Twi'}</strong>`;
+  document.getElementById('chatInput').placeholder =
+    lang === 'en' ? 'Type your farming question here...' : 'Kyerɛ wo asemmisa ha...';
+  document.getElementById('enChips').style.display = lang === 'en' ? 'flex' : 'none';
+  document.getElementById('twChips').style.display = lang === 'tw' ? 'flex' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CLEAR & NEW CHAT
+// ══════════════════════════════════════════════════════════════════
+
+function clearChat() {
+  if (currentLang === 'en') enSessionId = generateId();
+  else twSessionId = generateId();
+  renderWelcome(false);
+  loadSidebarHistory();
+}
+
+function newChat() { clearChat(); }
+
+// ══════════════════════════════════════════════════════════════════
+// CHIPS (QUICK QUESTIONS)
+// ══════════════════════════════════════════════════════════════════
+
+function fillChip(el) {
+  document.getElementById('chatInput').value = el.textContent;
+  updateCharCount();
+  document.getElementById('chatInput').focus();
+}
+
+function toggleChips() {
+  const sidebar = document.getElementById('chipsSidebar');
+  const visible = sidebar.style.display !== 'none';
+  sidebar.style.display = visible ? 'none' : 'flex';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// THEME
+// ══════════════════════════════════════════════════════════════════
+
+function toggleTheme() {
+  isDarkTheme = !isDarkTheme;
+  document.body.dataset.theme  = isDarkTheme ? 'night' : '';
+  document.getElementById('themeBtn').textContent = isDarkTheme ? '☀️' : '🌙';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SIDEBAR MOBILE
+// ══════════════════════════════════════════════════════════════════
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('mobile-open');
+  document.getElementById('overlay').classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════════════════
+
+function getTime() {
+  const now = new Date();
+  let h = now.getHours();
+  const m  = now.getMinutes().toString().padStart(2, '0');
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m} ${ap}`;
+}
+
+function scrollBottom() {
+  const msgs = document.getElementById('messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function updateCharCount() {
+  const len = document.getElementById('chatInput').value.length;
+  document.getElementById('charCount').textContent = `${len}/2000`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SMART RESPONSE HANDLER
+// Handles 4 response types from backend:
+//   "answer"        — normal farming answer
+//   "topics"        — show all topics grid (off-topic or vague)
+//   "off_topic"     — not farming related, show topics
+//   "low_confidence"— farming topic detected but no exact match
+// ══════════════════════════════════════════════════════════════════
+
+function handleSend() {
+  const input = document.getElementById('chatInput');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  appendMessage(text, 'user');
+  input.value = '';
+  updateCharCount();
+
+  const typingEl = showTyping();
+  const sessId   = getCurrentSessionId();
+
+  fetch(`${API}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: text,
+      language: currentLang,
+      session_id: sessId,
+      username: currentUser
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    typingEl.remove();
+    renderBotResponse(data, sessId, text);
+  })
+  .catch(() => {
+    typingEl.remove();
+    appendMessage('Sorry, the server is not responding. Please make sure the app is running.', 'bot');
+  });
+}
+
+function renderBotResponse(data, sessId, userText) {
+  const type = data.type || 'answer';
+
+  if (type === 'answer') {
+    // Normal answer
+    appendMessage(data.text, 'bot');
+    saveSessionMessage(currentUser, sessId, currentLang,
+      userText.length > 35 ? userText.substring(0,35)+'...' : userText,
+      userText, data.text);
     loadSidebarHistory();
-  }catch(e){}
+
+  } else if (type === 'topics' || type === 'off_topic') {
+    // Show topic selection grid
+    appendMessage(data.text, 'bot');
+    appendTopicsGrid(data.topics, data.topic_icons);
+    saveSessionMessage(currentUser, sessId, currentLang,
+      userText.length > 35 ? userText.substring(0,35)+'...' : userText,
+      userText, data.text);
+    loadSidebarHistory();
+
+  } else if (type === 'low_confidence') {
+    // Topic detected but no exact match — show suggestions for that topic
+    appendMessage(data.text, 'bot');
+    appendSuggestionButtons(data.suggestions, data.topic);
+    saveSessionMessage(currentUser, sessId, currentLang,
+      userText.length > 35 ? userText.substring(0,35)+'...' : userText,
+      userText, data.text);
+    loadSidebarHistory();
+  }
 }
 
-function scrollToBottom(){ messagesContainer.scrollTop=messagesContainer.scrollHeight; }
+function appendTopicsGrid(topics, icons) {
+  const msgs = document.getElementById('messages');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'topics-grid-wrapper';
 
-// ── EVENT LISTENERS ───────────────────────────────────────────────
-sendButton.addEventListener('click',handleSend);
-chatInput.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();handleSend();}});
-chatInput.addEventListener('input',updateCharCounter);
-clearChatButton.addEventListener('click',clearChat);
-if(newChatBtn) newChatBtn.addEventListener('click',clearChat);
-voiceButton.addEventListener('click',()=>{ if(!isRecording) startVoiceRecording(); else stopVoiceRecording(); });
-if(themeToggleButton) themeToggleButton.addEventListener('click',toggleTheme);
-if(logoutBtn) logoutBtn.addEventListener('click', doLogout);
+  const grid = document.createElement('div');
+  grid.className = 'topics-grid';
 
-// ── INIT ──────────────────────────────────────────────────────────
-setupLanguageToggle();
-setupSuggestionsSidebar();
-setupQuickChips();
-setupMobileSidebar();
-applyTheme('day');
-checkAuth().then(()=>{
-  selectedLanguage='en';
-  document.querySelectorAll('.lang-button').forEach(btn=>btn.classList.toggle('active', btn.dataset.lang==='en'));
-  startFreshChat('en');
-});
+  topics.forEach(topic => {
+    const btn = document.createElement('button');
+    btn.className = 'topic-btn';
+    btn.innerHTML = `<span class="topic-icon">${icons[topic] || '🌱'}</span><span class="topic-name">${topic}</span>`;
+    btn.onclick = () => selectTopic(topic, icons[topic]);
+    grid.appendChild(btn);
+  });
+
+  wrapper.appendChild(grid);
+  msgs.appendChild(wrapper);
+  scrollBottom();
+}
+
+function selectTopic(topic, icon) {
+  // Show a follow-up message asking what they want within this topic
+  fetch(`${API}/api/topic-suggestions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic })
+  })
+  .then(r => r.json())
+  .then(data => {
+    const followUp = `You selected **${icon} ${topic}**.\n\nWhat would you like to know? Here are some ideas:`;
+    appendMessage(followUp, 'bot');
+    appendSuggestionButtons(data.suggestions, topic);
+  });
+}
+
+function appendSuggestionButtons(suggestions, topic) {
+  const msgs = document.getElementById('messages');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'suggestions-wrapper';
+
+  suggestions.forEach(suggestion => {
+    const btn = document.createElement('button');
+    btn.className = 'suggestion-btn';
+    btn.textContent = suggestion;
+    btn.onclick = () => {
+      document.getElementById('chatInput').value = suggestion;
+      updateCharCount();
+      handleSend();
+    };
+    wrapper.appendChild(btn);
+  });
+
+  msgs.appendChild(wrapper);
+  scrollBottom();
+}
